@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+    <head>
+        <title>Mini LD #70</title>
+        <meta charset="UTF-8"> 
+        <script type="text/javascript" src="js/HexagonTools.js"></script>
+        <script type="text/javascript" src="js/Grid.js"></script>
+        <script type="text/javascript" src="js/HexCalcs.js"></script>
+        <script type="text/javascript" src="js/jquery-3.1.1.min.js"></script>
+        <link rel="stylesheet" type="text/css" href="css/hex.css"></style>
+    </head>
+    <body>
+        <canvas id="hexCanvas" width="800" height="600" />
+        <script type="text/javascript">
+        $(document).ready(function() {
+            var canvas = document.getElementById("hexCanvas");
+            var hexgrid = new HT.Grid(800, 600);
+            //grid.GetHexById("A1").selected = true
+            last = null;
+            hSelected = false;
+            player = 2;
+            var grid = {}
+            for(var i = 1; i < 12; i++) {
+                if(i % 2 == 0) {
+                    grid["B"+i] = 1;
+                    grid["L"+i] = 2;
+                } else {
+                    grid["A"+i] = 1;
+                    grid["K"+i] = 2;
+                }
+            }
+            updateHexGrid(hexgrid, grid);
+            drawHexGrid(hexgrid);
+            
+            var mouseIsDown = false;
+            canvas.onmousedown = function(e){
+                mouseIsDown = true;
+            }
+            canvas.onmouseup = function(e){
+                if(mouseIsDown) mouseClick(e);
+
+                mouseIsDown = false;
+            }
+
+            function floodFillGrid(hexgrid, grid, id, owner) {
+                h = hexgrid.GetHexById(id);
+                row = h.row;
+                col = h.col;
+                for(var y = -1; y <= 1; y++) {
+                    for(var x = -2; x <= 2; x++) {
+                        h2 = hexgrid.GetHexById(hexgrid.GetHexId(row + x, col + y));
+                        if(h2 != null && grid[h2.Id] != null && grid[h2.Id] != 0 && grid[h2.Id] != owner) {
+                            console.log(h2.Id + ", " + (row+x) + ", " + (col+y));
+                            grid[h2.Id] = owner;
+                            floodFillGrid(hexgrid, grid, h2.Id, owner);
+                        }
+                    }
+                }
+            }
+
+            function getMousePos(canvas, evt) {
+                var rect = canvas.getBoundingClientRect();
+                return {
+                    x: evt.clientX - rect.left,
+                    y: evt.clientY - rect.top
+                };
+            }
+
+            function mouseClick(e){
+                mousePos = getMousePos(canvas, e);
+                if(last != null) 
+                    last.selected = false;
+                current = hexgrid.GetHexAt(new HT.Point(mousePos.x, mousePos.y));                
+                if(current != null && current.owner == player) {
+                    hSelected = true;
+                    current.selected = true;
+                    drawHexGrid(hexgrid);
+                    last = current;
+                } else if(current != null && hSelected && current.owner == 0) {
+                    dist = hexgrid.GetHexDistance(current, last);
+                    if(dist == 1) {
+                        grid[current.Id] = last.owner;
+                        grid[last.Id] = 0;
+                        floodFillGrid(hexgrid, grid, current.Id, last.owner);
+                        updateHexGrid(hexgrid, grid);
+                        drawHexGrid(hexgrid);
+                        player = player == 2 ? 1 : 2;
+                        last = null;
+                        hSelected = false;
+                    }
+                }
+            }
+        });
+        </script>
+    </body>
+</html>
