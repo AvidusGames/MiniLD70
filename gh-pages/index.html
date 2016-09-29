@@ -7,6 +7,7 @@
         <script type="text/javascript" src="js/Grid.js"></script>
         <script type="text/javascript" src="js/HexCalcs.js"></script>
         <script type="text/javascript" src="js/jquery-3.1.1.min.js"></script>
+        <script type="text/javascript" src="js/HexAI.js"></script>
         <link rel="stylesheet" type="text/css" href="css/hex.css"></style>
     </head>
     <body>
@@ -18,17 +19,24 @@
             //grid.GetHexById("A1").selected = true
             last = null;
             hSelected = false;
+            playWithAI = true;
             player = 2;
-            var grid = {}
-            for(var i = 1; i < 12; i++) {
-                if(i % 2 == 0) {
-                    grid["B"+i] = 1;
-                    grid["L"+i] = 2;
-                } else {
-                    grid["A"+i] = 1;
-                    grid["K"+i] = 2;
+            var grid = {}            
+            for(var y = 0; y < 11; y++) {
+                for(var x = y%2; x < 12; x+=2) {
+                    h = hexgrid.GetHexById(hexgrid.GetHexId(x, y));
+                    if(x<=1)                        
+                        grid[h.Id] = 1;
+                    else if(x>=10)
+                        grid[h.Id] = 2;
+                    else
+                        grid[h.Id] = 0;
                 }
             }
+            //nodes = getAdjacentNodes(grid, "K7");
+            //for(var h in nodes) {
+            //    hexgrid.GetHexById(nodes[h]).selected = true;
+            //}
             updateHexGrid(hexgrid, grid);
             drawHexGrid(hexgrid);
             
@@ -67,27 +75,51 @@
                 };
             }
 
-            function mouseClick(e){
+            function mouseClick(e) {
                 mousePos = getMousePos(canvas, e);
                 if(last != null) 
                     last.selected = false;
-                current = hexgrid.GetHexAt(new HT.Point(mousePos.x, mousePos.y));                
-                if(current != null && current.owner == player) {
-                    hSelected = true;
-                    current.selected = true;
-                    drawHexGrid(hexgrid);
-                    last = current;
-                } else if(current != null && hSelected && current.owner == 0) {
-                    dist = hexgrid.GetHexDistance(current, last);
-                    if(dist == 1) {
-                        grid[current.Id] = last.owner;
-                        grid[last.Id] = 0;
-                        floodFillGrid(hexgrid, grid, current.Id, last.owner);
-                        updateHexGrid(hexgrid, grid);
+                if(!playWithAI) {
+                    current = hexgrid.GetHexAt(new HT.Point(mousePos.x, mousePos.y));                
+                    if(current != null && current.owner == player) {
+                        hSelected = true;
+                        current.selected = true;
                         drawHexGrid(hexgrid);
-                        player = player == 2 ? 1 : 2;
-                        last = null;
-                        hSelected = false;
+                        last = current;
+                    } else if(current != null && hSelected && current.owner == 0) {
+                        dist = hexgrid.GetHexDistance(current, last);
+                        if(dist == 1) {
+                            grid[current.Id] = last.owner;
+                            grid[last.Id] = 0;
+                            floodFillGrid(hexgrid, grid, current.Id, last.owner);
+                            updateHexGrid(hexgrid, grid);
+                            drawHexGrid(hexgrid);
+                            player = player == 2 ? 1 : 2;
+                            last = null;
+                            hSelected = false;
+                        }
+                    }
+                } else {
+                    current = hexgrid.GetHexAt(new HT.Point(mousePos.x, mousePos.y));                
+                    if(current != null && current.owner == 2) {
+                        hSelected = true;
+                        current.selected = true;
+                        drawHexGrid(hexgrid);
+                        last = current;
+                    } else if(current != null && hSelected && current.owner == 0) {
+                        dist = hexgrid.GetHexDistance(current, last);
+                        if(dist == 1) {
+                            grid[current.Id] = last.owner;
+                            grid[last.Id] = 0;
+                            floodFillGrid(hexgrid, grid, current.Id, last.owner);
+                            updateHexGrid(hexgrid, grid);
+                            drawHexGrid(hexgrid);
+                            last = null;
+                            hSelected = false;                            
+                            AIPlayMove(grid);                                
+                            updateHexGrid(hexgrid, grid);
+                            drawHexGrid(hexgrid);                            
+                        }
                     }
                 }
             }
