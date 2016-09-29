@@ -43,14 +43,15 @@
             }
 
             function floodFillGrid(hexgrid, grid, id, owner) {
-                h = hexgrid.GetHexById(id);
-                row = h.row;
-                col = h.col;
+                var h = hexgrid.GetHexById(id);
+                var row = h.row;
+                var col = h.col;
+                console.log("Recursion: " + id);
                 for(var y = -1; y <= 1; y++) {
                     for(var x = -2; x <= 2; x++) {
-                        h2 = hexgrid.GetHexById(hexgrid.GetHexId(row + x, col + y));
+                        var h2 = hexgrid.GetHexById(hexgrid.GetHexId(row + x, col + y));
                         if(h2 != null && grid[h2.Id] != null && grid[h2.Id] != 0 && grid[h2.Id] != owner) {
-                            console.log(h2.Id + ", " + (row+x) + ", " + (col+y));
+                            //console.log(h2.Id + ", " + (row+x) + ", " + (col+y));
                             grid[h2.Id] = owner;
                             floodFillGrid(hexgrid, grid, h2.Id, owner);
                         }
