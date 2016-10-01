@@ -21,6 +21,7 @@
             var last;
             var hSelected;
             var processing;
+            var fading;
             var playWithAI;
             var showTutorial;
             var tutorialState;
@@ -30,14 +31,37 @@
             var aiWorker;
             var nodes;
             init();
+            window.addEventListener("keydown", function(e) {
+                if(hexgrid == null) return;
+                if(showTutorial)
+                    tutorialKeyDown(e);
+                if(e.keyCode == 27 && !fading) {
+                    var callback_func2 = function() {
+                        init();                        
+                        console.log("EXITTING");
+                        StartMainMenu(callback_func);
+                    };
+                    var x = canvas.width / 2;
+                    var y = canvas.height / 2;
+                    fadeText(callback_func2, "Exitting...", x, y, "#2B2B2B", false, 1.0);                
+                }
+            }, true);
+            window.addEventListener("keyup", function(e) {
+                if(hexgrid == null) return;
+                if(e.keyCode == 27) {
+                    fading = false;
+                    drawHexGrid(hexgrid);
+                }
+            }, true);
 
             function init() {
                 last = null;
                 hSelected = false;
                 processing = false;
+                fading = false;
                 playWithAI = false;
                 showTutorial = false;
-                tutorialState = 0;
+                tutorialState = -1;
                 player = 2;
                 grid = {};
                 hexgrid = null;
@@ -124,9 +148,18 @@
                 } : null;
             }
 
-            function fadeText(callback, text, color) {
-                var alpha = 2.0,   // full opacity
-                interval = setInterval(function () {
+            function fadeText(callback, text, x, y, color, fadeIn, duration) {
+                var opacity_ = 0;
+                if(fadeIn)
+                    opacity_ = duration;
+                else
+                    opacity_ = (1 - duration);                
+                fading = true;
+                var interval = setInterval(function () {
+                    if(!fading) {            
+                        clearInterval(interval);
+                        return;
+                    }
                     canvas.width = canvas.width; // Clears the canvas
                     drawHexGrid(hexgrid);
 
@@ -135,19 +168,36 @@
                     var g = rgb.g;
                     var b = rgb.b;
 
-                    ctx.fillStyle = "rgba("+r+","+g+","+b+", " + Math.min(alpha, 1.0) + ")";
-                    ctx.strokeStyle = "rgba(255, 255, 255, " + Math.min(alpha, 1.0) + ")";
+                    var opacity2 = 0;
+                    if(fadeIn)
+                        opacity2 = Math.min(opacity_, 1.0);
+                    else
+                        opacity2 = Math.max(opacity_, 0.0);
+
+                    ctx.fillStyle = "rgba("+r+","+g+","+b+", " + opacity2 + ")";
+                    ctx.strokeStyle = "rgba(255, 255, 255, " + opacity2 + ")";
                     ctx.linewidth = 0.5;
                     ctx.font = "bold 30pt Arial";
                     ctx.textAlign = "center";
-                    ctx.fillText(text, canvas.width/2, canvas.height/2);
-                    ctx.strokeText(text, canvas.width/2, canvas.height/2);
+                    ctx.fillText(text, x, y);
+                    ctx.strokeText(text, x, y);            
 
-                    alpha = alpha - 0.05; // decrease opacity (fade out)
-                    if (alpha < 0) {
-                        canvas.width = canvas.width;
-                        clearInterval(interval);
-                        callback();
+                    if(fadeIn) {                        
+                        opacity_ = opacity_ - 0.05; // decrease opacity (fade out)                        
+                        if(opacity_ < 0) {
+                            canvas.width = canvas.width;
+                            fading = false;
+                            clearInterval(interval);
+                            callback();
+                        }
+                    } else {                    
+                        opacity_ = opacity_ + 0.05; // increase opacity (fade in)
+                        if (opacity_ > 1) {
+                            canvas.width = canvas.width;
+                            fading = false;                    
+                            clearInterval(interval);
+                            callback();
+                        }
                     }
                 }, 50); 
             }
@@ -176,16 +226,18 @@
                     init();
                     StartMainMenu(callback_func);
                 };
+                var x = canvas.width / 2;
+                var y = canvas.height / 2;
                 if(evalValue == 0) {
 		            AudioManager.play("won");
-                    fadeText(callback_func2, "ORANGE WON", playerColor[2]);
+                    fadeText(callback_func2, "ORANGE WON", x, y, playerColor[2], true, 2.0);
                 } else {
                     if(!playWithAI) {
 		                AudioManager.play("won");
                     } else {
 		                AudioManager.play("lose");
                     }
-                    fadeText(callback_func2, "BLUE WON", playerColor[1]);
+                    fadeText(callback_func2, "BLUE WON", x, y, playerColor[1], true, 2.0);
                 }            
             }
 
@@ -198,7 +250,6 @@
                 var yp = 15;
                 switch(tutorialState) {
                 case 0:                    
-                    window.addEventListener("keydown", tutorialKeyDown, true);
                     drawTextBG(ctx, "Press enter to continue", font, x, y, xp, yp);
                     break;
                 case 1:                    
@@ -259,7 +310,6 @@
                     drawTextBG(ctx, "You win! Tutorial complete, now go play against the AI or a friend", font, x, y, xp, yp);
                     break;
                 case 17:                    
-                    window.removeEventListener("keydown", tutorialKeyDown, false);
                     setTimeout(function() {                                    
                         stopGame();
                         init();
