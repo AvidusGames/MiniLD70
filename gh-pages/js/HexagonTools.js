@@ -1,5 +1,6 @@
 var HT = HT || {};
-var playerColor = ["white", "blue", "red"]
+//var playerColor = ["white", "blue", "red"]
+//var playerColor = ["white", "#2B2B2B", "#DE1B1B"]
 /**
  * A Point is simply x and y coordinates
  * @constructor
@@ -74,6 +75,8 @@ HT.Hexagon = function(id, x, y) {
 	this.P1 = new HT.Point(x + x1, y + y1);
 
 	this.selected = false;
+    this.highlighted = false;
+    this.showId = false;
 };
 
 /**
@@ -85,7 +88,11 @@ HT.Hexagon.prototype.draw = function(ctx) {
 	ctx.strokeStyle = "black"
     ctx.fillStyle = playerColor[this.owner];
     if(this.selected)
-		ctx.fillStyle = "green";
+		ctx.fillStyle = "#E9E581";
+    else if(this.highlighted)
+        ctx.fillStyle = "#ECECEA";
+    if(this.owner != 0 && this.highlighted)
+        ctx.fillStyle = "#A8CD1B";
 	ctx.lineWidth = 1;
 	ctx.beginPath();
 	ctx.moveTo(this.Points[0].X, this.Points[0].Y);
@@ -97,8 +104,8 @@ HT.Hexagon.prototype.draw = function(ctx) {
 	ctx.closePath();
     ctx.fill();
 	ctx.stroke();
-
-	if(this.Id)
+    
+	if(this.showId && this.Id)
 	{
 		//draw text for debugging
 		ctx.fillStyle = "black"
@@ -108,8 +115,7 @@ HT.Hexagon.prototype.draw = function(ctx) {
 		//var textWidth = ctx.measureText(this.Planet.BoundingHex.Id);
 		ctx.fillText(this.Id, this.MidPoint.X, this.MidPoint.Y);
 	}
-
-	if(this.PathCoOrdX !== null && this.PathCoOrdY !== null && typeof(this.PathCoOrdX) != "undefined" && typeof(this.PathCoOrdY) != "undefined")
+	/*if(this.PathCoOrdX !== null && this.PathCoOrdY !== null && typeof(this.PathCoOrdX) != "undefined" && typeof(this.PathCoOrdY) != "undefined")
 	{
 		//draw co-ordinates for debugging
 		ctx.fillStyle = "black"
@@ -119,7 +125,7 @@ HT.Hexagon.prototype.draw = function(ctx) {
 		//var textWidth = ctx.measureText(this.Planet.BoundingHex.Id);
 		ctx.fillText("("+this.PathCoOrdX+","+this.PathCoOrdY+")", this.MidPoint.X, this.MidPoint.Y + 10);
 	}
-
+    */
 	if(HT.Hexagon.Static.DRAWSTATS)
 	{
 		ctx.strokeStyle = "black";

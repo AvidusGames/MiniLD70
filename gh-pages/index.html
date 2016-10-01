@@ -8,62 +8,156 @@
         <script type="text/javascript" src="js/HexCalcs.js"></script>
         <script type="text/javascript" src="js/jquery-3.1.1.min.js"></script>
         <script type="text/javascript" src="js/HexAI.js"></script>
+        <script type="text/javascript" src="js/Menu.js"></script>
         <link rel="stylesheet" type="text/css" href="css/hex.css"></style>
     </head>
     <body>
         <canvas id="hexCanvas" width="800" height="600" />
         <script type="text/javascript">
-        $(document).ready(function() {
-            var canvas = document.getElementById("hexCanvas");
-            var hexgrid = new HT.Grid(800, 600);
-            //grid.GetHexById("A1").selected = true
-            last = null;
-            hSelected = false;
-            playWithAI = true;
-            player = 2;
-            var grid = {}            
-            for(var y = 0; y < 11; y++) {
-                for(var x = y%2; x < 12; x+=2) {
-                    h = hexgrid.GetHexById(hexgrid.GetHexId(x, y));
-                    if(x<=1)                        
-                        grid[h.Id] = 1;
-                    else if(x>=10)
-                        grid[h.Id] = 2;
-                    else
-                        grid[h.Id] = 0;
+        $(document).ready(function() {            
+            canvas = document.getElementById("hexCanvas");
+            playerColor = ["white", "#74AFAD", "#D9853B"]
+            ctx = canvas.getContext("2d");
+            var last;
+            var hSelected;
+            var processing;
+            var playWithAI;
+            var showTutorial;
+            var tutorialState;
+            var player;
+            var grid;
+            var hexgrid;
+            var aiWorker;
+            var nodes;
+            init();
+
+            function init() {
+                last = null;
+                hSelected = false;
+                processing = false;
+                playWithAI = false;
+                showTutorial = false;
+                tutorialState = 0;
+                player = 2;
+                grid = {};
+                hexgrid = null;
+                aiWorker = null;
+                nodes = null;
+            }
+
+            callback_func = function StartGame(_playWithAI, _showTutorial) {
+                GameLoopManager.stop();
+                MainMenu = null;
+                playWithAI = _playWithAI;
+                showTutorial = _showTutorial;
+                hexgrid = new HT.Grid(800, 600);            
+                for(var y = 0; y < 11; y++) {
+                    for(var x = y%2; x < 12; x+=2) {
+                        h = hexgrid.GetHexById(hexgrid.GetHexId(x, y));
+                        if(x<=1)                        
+                            grid[h.Id] = 1;
+                        else if(x>=10)
+                            grid[h.Id] = 2;
+                        else
+                            grid[h.Id] = 0;
+                        if(showTutorial)
+                            h.showId = true;
+                    }
                 }
-            }
-            //nodes = getAdjacentNodes(grid, "K7");
-            //for(var h in nodes) {
-            //    hexgrid.GetHexById(nodes[h]).selected = true;
-            //}
-            updateHexGrid(hexgrid, grid);
-            drawHexGrid(hexgrid);
-            
-            var mouseIsDown = false;
-            canvas.onmousedown = function(e){
-                mouseIsDown = true;
-            }
-            canvas.onmouseup = function(e){
-                if(mouseIsDown) mouseClick(e);
+                /*
+                nodes = getAdjacentNodes(grid, "G11");
+                for(var h in nodes) {
+                    hexgrid.GetHexById(nodes[h]).selected = true;
+                }
+                */
+                aiWorker = new Worker("js/HexAI.js");            
+                var mouseIsDown = false;
+                canvas.onmousedown = function(e) {
+                    mouseIsDown = true;
+                }
 
-                mouseIsDown = false;
-            }
-
-            function floodFillGrid(hexgrid, grid, id, owner) {
-                var h = hexgrid.GetHexById(id);
-                var row = h.row;
-                var col = h.col;
-                console.log("Recursion: " + id);
-                for(var y = -1; y <= 1; y++) {
-                    for(var x = -2; x <= 2; x++) {
-                        var h2 = hexgrid.GetHexById(hexgrid.GetHexId(row + x, col + y));
-                        if(h2 != null && grid[h2.Id] != null && grid[h2.Id] != 0 && grid[h2.Id] != owner) {
-                            //console.log(h2.Id + ", " + (row+x) + ", " + (col+y));
-                            grid[h2.Id] = owner;
-                            floodFillGrid(hexgrid, grid, h2.Id, owner);
+                canvas.onmouseup = function(e) {
+                    if(mouseIsDown) {
+                        if(!showTutorial)
+                            mouseClick(e);
+                        else
+                            tutorialMouseClick(e);
+                    }
+                    mouseIsDown = false;
+                }
+                
+                aiWorker.onmessage = function(e) {
+                    var best_move = e.data;
+                    console.log("Message recieved from worker: " + best_move);
+    
+                    var res = best_move.split(":");
+                    grid[res[0]] = 0;
+                    grid[res[1]] = 1;
+                    var callback_func_move = function(result) {
+                        if(result)
+                            handleWin();
+                        else {                            
+                            last = null;
+                            hSelected = false;
                         }
                     }
+                    playMove(res[1], 1, callback_func_move);
+                }
+                updateHexGrid(hexgrid, grid);
+                setTimeout(function() {
+                    drawHexGrid(hexgrid);
+                    if(showTutorial) {
+                        doShowTutorial(0);
+                    }
+                }, 0);
+            }
+
+            InputManager.connect(document, canvas);
+            StartMainMenu(callback_func);
+
+            function hexToRgb(hex) {
+                var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                return result ? {
+                    r: parseInt(result[1], 16),
+                    g: parseInt(result[2], 16),
+                    b: parseInt(result[3], 16)
+                } : null;
+            }
+
+            function fadeText(callback, text, color) {
+                var alpha = 2.0,   // full opacity
+                interval = setInterval(function () {
+                    canvas.width = canvas.width; // Clears the canvas
+                    drawHexGrid(hexgrid);
+
+                    var rgb = hexToRgb(color);
+                    var r = rgb.r;
+                    var g = rgb.g;
+                    var b = rgb.b;
+
+                    ctx.fillStyle = "rgba("+r+","+g+","+b+", " + Math.min(alpha, 1.0) + ")";
+                    ctx.strokeStyle = "rgba(255, 255, 255, " + Math.min(alpha, 1.0) + ")";
+                    ctx.linewidth = 0.5;
+                    ctx.font = "bold 30pt Arial";
+                    ctx.textAlign = "center";
+                    ctx.fillText(text, canvas.width/2, canvas.height/2);
+                    ctx.strokeText(text, canvas.width/2, canvas.height/2);
+
+                    alpha = alpha - 0.05; // decrease opacity (fade out)
+                    if (alpha < 0) {
+                        canvas.width = canvas.width;
+                        clearInterval(interval);
+                        callback();
+                    }
+                }, 50); 
+            }
+
+            function stopGame() {                
+                canvas.onmousedown = null;
+                canvas.onmouseup = null;
+                if(aiWorker != null) {
+                    aiWorker.terminate();
+                    aiWorker = null;
                 }
             }
 
@@ -75,15 +169,308 @@
                 };
             }
 
+            function handleWin() {
+                stopGame();
+                var evalValue = evaluate(grid);
+                var callback_func2 = function() {
+                    init();
+                    StartMainMenu(callback_func);
+                };
+                if(evalValue == 0) {
+		            AudioManager.play("won");
+                    fadeText(callback_func2, "ORANGE WON", playerColor[2]);
+                } else {
+                    if(!playWithAI) {
+		                AudioManager.play("won");
+                    } else {
+		                AudioManager.play("lose");
+                    }
+                    fadeText(callback_func2, "BLUE WON", playerColor[1]);
+                }            
+            }
+
+            function doShowTutorial(_tutorialState) {
+                tutorialState = _tutorialState;
+                var font = "14px arial";
+                var x = canvas.width / 2;
+                var y = canvas.height / 2;
+                var xp = 5;
+                var yp = 15;
+                switch(tutorialState) {
+                case 0:                    
+                    window.addEventListener("keydown", tutorialKeyDown, true);
+                    drawTextBG(ctx, "Press enter to continue", font, x, y, xp, yp);
+                    break;
+                case 1:                    
+                    drawHexGrid(hexgrid);
+                    drawTextBG(ctx, "You play as orange, and your opponent is blue", font, x, y, xp, yp);
+                    break;
+                case 2:
+                    drawHexGrid(hexgrid);
+                    drawTextBG(ctx, "Click on the highlighted piece marked as K1", font, x, y, xp, yp);
+                    break;
+                case 3:
+                    drawHexGrid(hexgrid);
+                    drawTextBG(ctx, "Great! Now click on an unoccupied adjacent tile to go there", font, x, y, xp, yp);
+                    break;
+                case 4:
+                    drawHexGrid(hexgrid);
+                    drawTextBG(ctx, "OK, Now blue will make a move", font, x, y, xp, yp);
+                    break;
+                case 5:
+                    drawHexGrid(hexgrid);
+                    drawTextBG(ctx, "Move the piece on " + last.Id + " to H2", font, x, y, xp, yp);
+                    break;
+                case 7:
+                    drawHexGrid(hexgrid);
+                    drawTextBG(ctx, "Good! Now let's see what move blue does", font, x, y, xp, yp);
+                    break;
+                case 8:
+                    drawHexGrid(hexgrid);
+                    drawTextBG(ctx, "Oh no! Your piece on H2 turned blue!", font, x, y, xp, yp);
+                    break;
+                case 9:
+                    drawHexGrid(hexgrid);
+                    drawTextBG(ctx, "Now take it back with another piece!", font, x, y, xp, yp);
+                    break;
+                case 11:
+                    drawHexGrid(hexgrid);
+                    drawTextBG(ctx, "HINT: try to move the piece on L2 or K3", font, x, y, xp, yp);
+                    tutorialState = 9;
+                    break;
+                case 12:
+                    drawHexGrid(hexgrid);
+                    if(last.Id == "K3")
+                        drawTextBG(ctx, "HINT: try to move to the tile J2 or I3", font, x, y, xp, yp);
+                    else
+                        drawTextBG(ctx, "HINT: try to move to the tile J2", font, x, y, xp, yp);
+                    tutorialState = 10;
+                    break;
+                case 13:
+                    drawHexGrid(hexgrid);
+                    drawTextBG(ctx, "Fantastic job! Now what move will blue make?", font, x, y, xp, yp);
+                    break;
+                case 14:
+                    drawHexGrid(hexgrid);
+                    drawTextBG(ctx, "What a silly move by blue! Now play F2 to D2", font, x, y, xp, yp);
+                    break;
+                case 16:
+                    drawHexGrid(hexgrid);
+                    drawTextBG(ctx, "You win! Tutorial complete, now go play against the AI or a friend", font, x, y, xp, yp);
+                    break;
+                case 17:                    
+                    window.removeEventListener("keydown", tutorialKeyDown, false);
+                    setTimeout(function() {                                    
+                        stopGame();
+                        init();
+                        StartMainMenu(callback_func);
+                    }, 0);
+                    break;
+                }
+            }
+
+            function tutorialMouseClick(e) {
+                var mousePos = getMousePos(canvas, e);
+                if(!showTutorial) return;
+                switch(tutorialState) {
+                case 2:
+                    current = hexgrid.GetHexAt(new HT.Point(mousePos.x, mousePos.y));
+                    if(current.Id == "K1") {
+                        current.highlighted = false;
+                        current.selected = true;
+                        nodes = getAdjacentNodes(grid, current.Id);
+                        for(var h in nodes) {                            
+                            if(grid[nodes[h]] == 0)
+                                hexgrid.GetHexById(nodes[h]).highlighted = true;
+                        }
+                        last = current;
+                        doShowTutorial(3);
+                    }
+                    break;
+                case 3:
+                    current = hexgrid.GetHexAt(new HT.Point(mousePos.x, mousePos.y));
+                    dist = hexgrid.GetHexDistance(current, last);
+                    if(dist == 1) {
+                        last.selected = false;
+                        grid[current.Id] = last.owner;
+                        grid[last.Id] = 0;
+                        for(var h in nodes) {
+                            hexgrid.GetHexById(nodes[h]).highlighted = false;
+                        }
+                        nodes = null;
+		                AudioManager.play("move");
+                        updateHexGrid(hexgrid, grid);
+                        last = current;
+                        doShowTutorial(4);
+                    }
+                    break;
+                case 5:
+                    current = hexgrid.GetHexAt(new HT.Point(mousePos.x, mousePos.y));
+                    if(current.Id == last.Id) {
+                        current.highlighted = false;
+                        current.selected = true;
+                        hexgrid.GetHexById("H2").highlighted = true;
+                        last = current;
+                        drawHexGrid(hexgrid, grid);
+                        tutorialState = 6;                    
+                    }
+                    break;
+                case 6:
+                    current = hexgrid.GetHexAt(new HT.Point(mousePos.x, mousePos.y));                    
+                    if(current.Id == "H2") {
+                        last.selected = false;
+                        grid[current.Id] = last.owner;
+                        grid[last.Id] = 0;                        
+                        hexgrid.GetHexById("H2").highlighted = false;
+		                AudioManager.play("move");
+                        updateHexGrid(hexgrid, grid);
+                        last = current;
+                        doShowTutorial(7);
+                    }
+                    break;
+                case 9:
+                    current = hexgrid.GetHexAt(new HT.Point(mousePos.x, mousePos.y));
+                    if(current.Id == "L2" || current.Id == "K3") {                        
+                        current.selected = true;                        
+                        nodes = getAdjacentNodes(grid, current.Id);
+                        for(var h in nodes) {                        
+                            if(grid[nodes[h]] == 0)
+                                hexgrid.GetHexById(nodes[h]).highlighted = true;
+                        }
+                        last = current;
+                        drawHexGrid(hexgrid, grid);
+                        tutorialState = 10;                
+                    } else {
+                        doShowTutorial(11);
+                    }
+                    break;
+                case 10:
+                    current = hexgrid.GetHexAt(new HT.Point(mousePos.x, mousePos.y));                    
+                    if((last.Id == "K3" && (current.Id == "J2" || current.Id == "I3")) || (last.Id == "L2" && current.Id == "J2")) {
+                        last.selected = false;
+                        grid[current.Id] = last.owner;
+                        grid[last.Id] = 0;                                            
+                        for(var h in nodes) {
+                            hexgrid.GetHexById(nodes[h]).highlighted = false;
+                        }
+                        nodes = null;                        
+		                AudioManager.play("move");                        
+                        last = current;
+                        var callback_func_move = function() {          
+                            doShowTutorial(13);
+                        };                        
+                        floodFillGrid(grid, current.Id, 2, callback_func_move);
+                    } else {
+                        doShowTutorial(12);
+                    }
+                    break;
+                case 14:
+                    current = hexgrid.GetHexAt(new HT.Point(mousePos.x, mousePos.y));
+                    if(current.Id == "F2") {
+                        current.highlighted = false;
+                        current.selected = true;
+                        hexgrid.GetHexById("D2").highlighted = true; 
+                        last = current;
+                        drawHexGrid(hexgrid, grid);
+                        tutorialState = 15;
+                    }
+                    break;
+                case 15:
+                    current = hexgrid.GetHexAt(new HT.Point(mousePos.x, mousePos.y));                    
+                    if(current.Id == "D2") {
+                        last.selected = false;
+                        grid[current.Id] = last.owner;
+                        grid[last.Id] = 0;                        
+                        hexgrid.GetHexById("D2").highlighted = false;
+		                AudioManager.play("move");                                           
+                        last = current;
+                        var callback_func_move = function() {          
+                            doShowTutorial(16);
+                        };                        
+                        floodFillGrid(grid, current.Id, 2, callback_func_move);
+                    }
+                    break;
+                }
+            }
+
+            function tutorialKeyDown(e) {
+                var keyCode = e.keyCode;
+                if(!showTutorial) return;
+                switch(tutorialState) {
+                case 0:
+                    if(keyCode == 13) {
+                        doShowTutorial(1);
+                    }
+                    break;
+                case 1:
+                    if(keyCode == 13) {
+                        hexgrid.GetHexById("K1").highlighted = true;
+                        doShowTutorial(2);
+                    }
+                    break;
+                case 4:
+                    if(keyCode == 13) {
+                        grid["B2"] = 0;
+                        grid["D2"] = 1;
+		                AudioManager.play("move");
+                        updateHexGrid(hexgrid, grid);
+                        doShowTutorial(5);
+                    }
+                    break;
+                case 7:
+                    if(keyCode == 13) {
+                        grid["D2"] = 0;
+                        grid["F2"] = 1;
+		                AudioManager.play("move");
+                        var callback_func_move = function() {                            
+                            doShowTutorial(8);
+                        };                        
+                        floodFillGrid(grid, "F2", 1, callback_func_move);
+                    }
+                    break;
+                case 8:
+                    if(keyCode == 13) {
+                        doShowTutorial(9);
+                    }
+                    break;            
+                case 13:
+                    if(keyCode == 13) {
+                        grid["A1"] = 0;
+                        grid["B2"] = 1;
+		                AudioManager.play("move");
+                        updateHexGrid(hexgrid, grid);
+                        hexgrid.GetHexById("F2").highlighted = true;
+                        doShowTutorial(14);                    
+                    }
+                    break;
+                case 16:
+                    if(keyCode == 13) {
+                        doShowTutorial(17);
+                    }
+                    break;
+                }
+            }
+
             function mouseClick(e) {
-                mousePos = getMousePos(canvas, e);
+                var mousePos = getMousePos(canvas, e);
                 if(last != null) 
                     last.selected = false;
                 if(!playWithAI) {
                     current = hexgrid.GetHexAt(new HT.Point(mousePos.x, mousePos.y));                
-                    if(current != null && current.owner == player) {
+                    if(current != null && current.owner == player && !processing) {
                         hSelected = true;
                         current.selected = true;
+                        if(nodes != null) {
+                            for(var h in nodes) {
+                                hexgrid.GetHexById(nodes[h]).highlighted = false;
+                            }
+                            nodes = null;
+                        }
+                        nodes = getAdjacentNodes(grid, current.Id);
+                        for(var h in nodes) {                            
+                            if(grid[nodes[h]] == 0)
+                                hexgrid.GetHexById(nodes[h]).highlighted = true;
+                        }                        
                         drawHexGrid(hexgrid);
                         last = current;
                     } else if(current != null && hSelected && current.owner == 0) {
@@ -91,19 +478,38 @@
                         if(dist == 1) {
                             grid[current.Id] = last.owner;
                             grid[last.Id] = 0;
-                            floodFillGrid(hexgrid, grid, current.Id, last.owner);
-                            updateHexGrid(hexgrid, grid);
-                            drawHexGrid(hexgrid);
-                            player = player == 2 ? 1 : 2;
-                            last = null;
-                            hSelected = false;
+                            for(var h in nodes) {
+                                hexgrid.GetHexById(nodes[h]).highlighted = false;
+                            }
+                            nodes = null;                            
+                            var callback_func_move = function(result) {
+                                if(result)
+                                    handleWin();
+                                else {                                
+                                    player = player == 2 ? 1 : 2;
+                                    last = null;
+                                    hSelected = false;
+                                }
+                            }
+                            playMove(current.Id, last.owner, callback_func_move);
                         }
                     }
                 } else {
                     current = hexgrid.GetHexAt(new HT.Point(mousePos.x, mousePos.y));                
-                    if(current != null && current.owner == 2) {
+                    if(current != null && current.owner == 2 && !processing) {
                         hSelected = true;
-                        current.selected = true;
+                        current.selected = true;                        
+                        if(nodes != null) {
+                            for(var h in nodes) {
+                                hexgrid.GetHexById(nodes[h]).highlighted = false;
+                            }
+                            nodes = null;
+                        }
+                        nodes = getAdjacentNodes(grid, current.Id);
+                        for(var h in nodes) {                            
+                            if(grid[nodes[h]] == 0)
+                                hexgrid.GetHexById(nodes[h]).highlighted = true;
+                        }                        
                         drawHexGrid(hexgrid);
                         last = current;
                     } else if(current != null && hSelected && current.owner == 0) {
@@ -111,18 +517,150 @@
                         if(dist == 1) {
                             grid[current.Id] = last.owner;
                             grid[last.Id] = 0;
-                            floodFillGrid(hexgrid, grid, current.Id, last.owner);
-                            updateHexGrid(hexgrid, grid);
-                            drawHexGrid(hexgrid);
-                            last = null;
-                            hSelected = false;                            
-                            AIPlayMove(grid);                                
-                            updateHexGrid(hexgrid, grid);
-                            drawHexGrid(hexgrid);                            
+                            for(var h in nodes) {
+                                hexgrid.GetHexById(nodes[h]).highlighted = false;
+                            }
+                            nodes = null;
+                            var callback_func_move = function(result) { 
+                                if(result)
+                                    handleWin();
+                                else
+                                    aiWorker.postMessage(grid);
+                            }
+                            playMove(current.Id, last.owner, callback_func_move);
                         }
                     }
                 }
             }
+
+			function floodFillGrid(grid, h, player, callback) {                
+                actionStack = [];
+                var stack = [];
+                stack.push(h);
+                var grid2 = jQuery.extend(true, {}, grid);
+                while(stack.length > 0) {
+                    var move = stack.pop();
+                    var nodes = getAdjacentNodes(grid2, move);
+                    for(var index in nodes) {
+                        var h2 = nodes[index];
+                        if(grid2[h2] != 0 && grid2[h2] != player) {
+                            grid2[h2] = player;
+                            actionStack.push(h2);
+                            stack.push(h2);
+                        }
+                    }
+                }
+                actionStack.reverse();
+                if(actionStack.length > 0) {
+                    processing = true;
+                    var move = actionStack.pop();
+                    AudioManager.play("move");
+                    grid[move] = player;
+                    updateHexGrid(hexgrid, grid);
+                    drawHexGrid(hexgrid);
+                    interval = setInterval(function() {
+                        if(actionStack.length > 0) {
+                            var move = actionStack.pop();
+                            AudioManager.play("move");
+                            grid[move] = player;
+                            updateHexGrid(hexgrid, grid);
+                            drawHexGrid(hexgrid);
+                        } else {
+                            clearInterval(interval);
+                            processing = false; 
+                            callback();
+                        }
+                    }, 100);
+                } else {
+                    callback();
+                }
+			}
+
+            function playMove(move, player, callback) {
+                AudioManager.play("move");
+				var callback_func_move = function() {
+                    updateHexGrid(hexgrid, grid);
+                    drawHexGrid(hexgrid);
+                	var evalValue = evaluate(grid);
+					callback(evalValue == 0 || evalValue == maxScore);
+				};
+				floodFillGrid(grid, move, player, callback_func_move);
+            }
+
+			function drawTextBG(ctx, txt, font, _x, _y, xpadding, ypadding) {
+			    xpadding = xpadding || 5;
+                ypadding = ypadding || 5;
+
+			    ctx.save();
+			    ctx.font = font;
+			    ctx.textBaseline = 'top';
+                ctx.textAlign = "center";
+			    
+			    var width = ctx.measureText(txt).width;
+                var xx = _x - width/2;
+                var yy = _y;
+			    ctx.strokeStyle = "rgb(255, 0, 0)";
+				ctx.fillStyle = "rgba(255, 255, 0, .5)";
+			    roundRect(ctx, xx-xpadding, yy-ypadding, width+(xpadding*2), parseInt(font, 10)+(ypadding*2), 10, true);
+			    
+			    ctx.fillStyle = '#000';
+			    ctx.fillText(txt, _x, _y);
+			    
+			    ctx.restore();
+			}
+
+			/**
+			 * Draws a rounded rectangle using the current state of the canvas.
+			 * If you omit the last three params, it will draw a rectangle
+			 * outline with a 5 pixel border radius
+			 * @param {CanvasRenderingContext2D} ctx
+			 * @param {Number} x The top left x coordinate
+			 * @param {Number} y The top left y coordinate
+			 * @param {Number} width The width of the rectangle
+			 * @param {Number} height The height of the rectangle
+			 * @param {Number} [radius = 5] The corner radius; It can also be an object 
+			 *                 to specify different radii for corners
+			 * @param {Number} [radius.tl = 0] Top left
+			 * @param {Number} [radius.tr = 0] Top right
+			 * @param {Number} [radius.br = 0] Bottom right
+			 * @param {Number} [radius.bl = 0] Bottom left
+			 * @param {Boolean} [fill = false] Whether to fill the rectangle.
+			 * @param {Boolean} [stroke = true] Whether to stroke the rectangle.
+			 */
+			function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
+			  if (typeof stroke == 'undefined') {
+			    stroke = true;
+			  }
+			  if (typeof radius === 'undefined') {
+			    radius = 5;
+			  }
+			  if (typeof radius === 'number') {
+			    radius = {tl: radius, tr: radius, br: radius, bl: radius};
+			  } else {
+			    var defaultRadius = {tl: 0, tr: 0, br: 0, bl: 0};
+			    for (var side in defaultRadius) {
+			      radius[side] = radius[side] || defaultRadius[side];
+			    }
+			  }
+			  ctx.beginPath();
+			  ctx.moveTo(x + radius.tl, y);
+			  ctx.lineTo(x + width - radius.tr, y);
+			  ctx.quadraticCurveTo(x + width, y, x + width, y + radius.tr);
+			  ctx.lineTo(x + width, y + height - radius.br);
+			  ctx.quadraticCurveTo(x + width, y + height, x + width - radius.br, y + height);
+			  ctx.lineTo(x + radius.bl, y + height);
+			  ctx.quadraticCurveTo(x, y + height, x, y + height - radius.bl);
+			  ctx.lineTo(x, y + radius.tl);
+			  ctx.quadraticCurveTo(x, y, x + radius.tl, y);
+			  ctx.closePath();
+			  if (fill) {
+			    ctx.fill();
+			  }
+			  if (stroke) {
+			    ctx.stroke();
+			  }
+
+			}
         });
         </script>
     </body>
